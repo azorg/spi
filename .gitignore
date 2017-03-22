@@ -1,0 +1,6 @@
+*.d
+*.o
+.dep
+.obj
+spi_test
+

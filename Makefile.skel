@@ -1,0 +1,287 @@
+#============================================================================
+# Skeleton for GNU Make
+# Version: 0.8.3
+# File: "Makefile.skel"
+# (C) 2005...2015 Alex Zorg <azorg@mail.ru>
+# Licensed by GNU General Public License version 2
+# Last update: 2015.08.20
+#============================================================================
+# -*= Makefile example =*-
+#OUT_NAME    := hello
+#EXEC_EXT    := .exe
+#OUT_DIR     := .
+#CLEAN_DIR   := $(OUT_DIR)/tmp
+#CLEAN_FILES := "$(OUT_DIR)/$(OUT_NAME).map" "$(OUT_DIR)/$(OUT_NAME).exe"
+#----------------------------------------------------------------------------
+#
+# 1-st way to select source files
+#SRCS := main.cpp libs/src/support.c asm_func.s
+#HDRS := libs/include/support.h asm_func.h my_types.h
+#
+# 2-nd way to select source files
+#SRC_DIRS := . libs/src
+#HDR_DIRS := . libs/include
+#
+#----------------------------------------------------------------------------
+#INC_DIRS  := ../libs/include 
+#INC_FLAGS := -I/usr/include/foo -I `wx-config --cxxflags`
+#DEFS      := -DUNIT_DEBUG
+#OPTIM     := -Os -fomit-frame-pointer
+#WARN      := -Wall
+#
+#ASFLAGS   := -mcpu=cortex-m3 -mthumb $(ASFLAGS)
+#CFLAGS    := $(WARN) $(OPTIM) $(DEFS) $(CFLAGS) -pipe
+#CXXFLAGS  := `wx-config --cxxflags` $(CXXFLAGS) $(CFLAGS)
+#LDFLAGS   := `wx-config --libs` -lm -lrt -lpthread $(LDFLAGS)
+#
+#PREFIX    := /opt
+#----------------------------------------------------------------------------
+#_AS  := @as
+#_CC  := @gcc
+#_CXX := @g++
+#_LD  := @g++
+#----------------------------------------------------------------------------
+#include Makefile.skel
+#============================================================================
+ifndef OUT_DIR
+  OUT_DIR := .
+endif
+
+ifndef OUT_NAME
+  OUT_NAME := a.out
+endif
+#----------------------------------------------------------------------------
+ifdef SRCS
+  # 1-st way to select source files
+  SRC_DIRS := $(patsubst %/,%,$(sort $(dir $(SRCS))))
+else
+  # 2-nd way to select source files
+  ifndef SRC_DIRS
+    SRC_DIRS = .
+  endif
+  SRC_WILDCARDS := $(addsuffix /*.c,   $(SRC_DIRS)) \
+                   $(addsuffix /*.cpp, $(SRC_DIRS)) \
+                   $(addsuffix /*.s,   $(SRC_DIRS))
+  SRCS := $(wildcard $(SRC_WILDCARDS))
+endif
+#----------------------------------------------------------------------------
+ifdef HDRS
+  # 1-st way to select header files
+  HDR_DIRS := $(patsubst %/,%,$(sort $(dir $(HDRS))))
+else
+  # 2-nd way to select header files
+  ifndef HDR_DIRS
+    HDR_DIRS = .
+  endif
+  HDR_WILDCARDS := $(addsuffix /*.h,   $(HDR_DIRS)) \
+                   $(addsuffix /*.hh,  $(HDR_DIRS)) \
+                   $(addsuffix /*.hpp, $(HDR_DIRS))
+  HDRS := $(wildcard $(HDR_WILDCARDS))
+endif
+#----------------------------------------------------------------------------
+ifndef DEPS_DIR
+  DEPS_DIR := .dep
+endif
+
+ifndef OBJS_DIR
+  OBJS_DIR := .obj
+endif
+
+ifndef ASMS_DIR
+  ASMS_DIR := disasm
+endif
+#----------------------------------------------------------------------------
+ifndef PREFIX
+	PREFIX := /usr/local
+endif
+#----------------------------------------------------------------------------
+DEPS_DIR_FLG := $(DEPS_DIR)/.dir
+OBJS_DIR_FLG := $(OBJS_DIR)/.dir
+ASMS_DIR_FLG := $(ASMS_DIR)/.dir
+#----------------------------------------------------------------------------
+OUT := $(OUT_DIR)/$(OUT_NAME)$(EXEC_EXT)
+#----------------------------------------------------------------------------
+#override ASFLAGS  +=
+#override CFLAGS   +=
+#override CXXFLAGS +=
+#override LDFLAGS  +=
+override INC_FLAGS += $(addprefix -I, $(INC_DIRS) $(HDR_DIRS) $(SRC_DIRS))
+#----------------------------------------------------------------------------
+ifndef _AS
+  _AS := @as
+endif
+
+ifndef _CC
+  _CC := @gcc
+endif
+
+ifndef _CXX
+  _CXX := @g++
+endif
+
+ifndef _AS_DEP
+  _AS_DEP := $(_CC)
+endif
+
+ifndef _CC_DEP
+  _CC_DEP := $(_CC)
+endif
+
+ifndef _CXX_DEP
+  _CXX_DEP := $(_CXX)
+endif
+
+ifndef _LD
+  _LD := @gcc
+endif
+
+ifndef _OBJDUMP
+  _OBJDUMP := @objdump
+endif
+
+ifndef DISASMOPT
+  DISASMOPT  := -S -d -l
+  #DISASMOPT := -S -D -l -w
+endif
+
+ifndef MKDEPOPT
+  MKDEPOPT := -MM
+endif
+
+ifndef CTAGS
+  CTAGS := @etags
+endif
+
+ifndef TAGS_FILE
+  TAGS_FILE := TAGS
+endif
+#----------------------------------------------------------------------------
+RM      := @rm
+RMF     := @rm -f
+RMDIR   := @rmdir -p
+RMDIRF  := @rm -rf
+MKDIR   := @mkdir -p
+ECHO    := @echo
+TOUCH   := @touch
+CAT     := @cat
+WC      := @wc
+MAKE    := @make
+INSTALL := @install -m 0755
+SHELL   := sh
+#----------------------------------------------------------------------------
+BASE_SRCS := $(notdir $(basename $(SRCS)))
+OBJS := $(addprefix $(OBJS_DIR)/, $(addsuffix .o, $(BASE_SRCS)))
+DEPS := $(addprefix $(DEPS_DIR)/, $(addsuffix .d, $(BASE_SRCS)))
+ASMS := $(addprefix $(ASMS_DIR)/, $(addsuffix .s, $(BASE_SRCS)))
+#----------------------------------------------------------------------------
+VPATH := $(SRC_DIRS)
+
+$(DEPS_DIR)/%.d: %.s
+	$(ECHO) -n > $@ # Do Nothing!!!
+
+$(DEPS_DIR)/%.d: %.c $(DEPS_DIR_FLG)
+	$(ECHO) ">>> make dependency for $<"
+	$(ECHO) -n '$(OBJS_DIR)/' > $@
+	$(_CC_DEP) $(MKDEPOPT) $(INC_FLAGS) $(DEFS) $< >> $@
+
+$(DEPS_DIR)/%.d: %.cpp $(DEPS_DIR_FLG)
+	$(ECHO) ">>> make dependency for $<"
+	$(ECHO) -n '$(OBJS_DIR)/' > $@
+	$(_CXX_DEP) $(MKDEPOPT) $(INC_FLAGS) $(DEFS) $< >> $@
+
+$(OBJS_DIR)/%.o: %.s $(OBJS_DIR_FLG)
+	$(ECHO) ">>> assemble $<"
+	$(_AS) $(INC_FLAGS) $(ASFLAGS) $< -o $@
+
+$(OBJS_DIR)/%.o: %.c $(OBJS_DIR_FLG)
+	$(ECHO) ">>> compile $<"
+	$(_CC) $(INC_FLAGS) $(CFLAGS) -c $< -o $@
+
+$(OBJS_DIR)/%.o: %.cpp $(OBJS_DIR_FLG)
+	$(ECHO) ">>> compile $<"
+	$(_CXX) $(INC_FLAGS) $(CXXFLAGS) -c $< -o $@
+
+$(ASMS_DIR)/%.s: $(OBJS_DIR)/%.o $(ASMS_DIR_FLG)
+	$(ECHO) ">>> disasm source from $<"
+	$(_OBJDUMP) $(DISASMOPT) $< > $@
+
+#----------------------------------------------------------------------------
+#.PHONY: all out dep obj clr clean distclean rebuild list dirs count tags
+
+all: dep out
+
+out: $(OUT)
+
+dep: $(DEPS)
+
+obj: dep $(OBJS)
+
+clr: clrdep clrobj
+
+clrdep: 
+	$(RMF) $(DEPS)
+	$(RMF) $(DEPS_DIR_FLG)
+	$(RMDIR) $(DEPS_DIR)
+
+clrobj: 
+	$(RMF) $(OBJS)
+	$(RMF) $(OBJS_DIR_FLG)
+	$(RMDIR) $(OBJS_DIR)
+
+clean:
+	$(RMF) $(OUT)
+	$(RMF) $(OBJS_DIR)/*.o $(DEPS_DIR)/*.d $(ASMS_DIR)/*.s
+	$(RMF) $(DEPS_DIR_FLG) $(OBJS_DIR_FLG)
+	$(RMDIRF) $(OBJS_DIR) $(DEPS_DIR) $(ASMS_DIR)
+	$(RMF) $(CLEAN_FILES) $(TAGS_FILE)
+	$(RMDIRF) $(CLEAN_DIR)
+
+rebuild:
+	$(RMF) $(OBJS) $(DEPS)
+	$(MAKE) all
+
+list:
+	$(ECHO) SRCS: $(SRCS)
+	$(ECHO) HDRS: $(HDRS)
+	$(ECHO) OBJS: $(OBJS)
+
+dirs:
+	$(ECHO) SRC_DIRS: $(SRC_DIRS)
+	$(ECHO) HDR_DIRS: $(HDR_DIRS)
+	$(ECHO) INC_DIRS: $(INC_DIRS)
+
+count:
+	$(WC) $(HDRS) $(SRCS)
+
+tags: $(TAGS_FILE)
+
+install: $(OUT)
+	$(ECHO) ">>> install '$(OUT_NAME)' to $(PREFIX)/bin"
+	$(INSTALL) $(OUT) "$(PREFIX)/bin"
+#----------------------------------------------------------------------------
+$(OUT): $(OBJS)
+	$(MKDIR) $(OUT_DIR)
+	$(ECHO) ">>> build '$@'"
+	$(_LD) $^ $(LDFLAGS) -o $@
+
+$(DEPS_DIR_FLG):
+	$(MKDIR) $(DEPS_DIR)
+	$(TOUCH) $(DEPS_DIR_FLG)
+
+$(OBJS_DIR_FLG):
+	$(MKDIR) $(OBJS_DIR)
+	$(TOUCH) $(OBJS_DIR_FLG)
+
+$(ASMS_DIR_FLG):
+	$(MKDIR) $(ASMS_DIR)
+	$(TOUCH) $(ASMS_DIR_FLG)
+
+$(TAGS_FILE): $(SRCS)
+	$(CTAGS) $(SRCS) -o $(TAGS_FILE)
+#----------------------------------------------------------------------------
+#include $(DEPS)
+include $(wildcard $(addsuffix /*.d, $(DEPS_DIR)))
+#----------------------------------------------------------------------------
+
+#*** end of "Makefile.skel" file ***#
+
