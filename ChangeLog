@@ -1,3 +1,4 @@
 2017.03.22:
   * start work under `spi_t` component (spi.h/spi.c module)
+  * test under armbian on Orange Pi Zero (work in process)
 
