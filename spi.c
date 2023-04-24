@@ -21,9 +21,6 @@ int spi_init(spi_t *self,
              int bits,           // bits per word (usually 8)
              int speed)          // max speed [Hz]
 {
-  // zero fill `struct spi_ioc_transfer xfer[2]`
-  memset(&self->xfer, 0, sizeof(self->xfer));
-
   // open SPIdev
   self->fd = open(device, O_RDWR);
   if (self->fd < 0)
@@ -33,14 +30,11 @@ int spi_init(spi_t *self,
   }
 
   // set mode
-  if (mode)
+  self->mode = (__u8)mode;
+  if (ioctl(self->fd, SPI_IOC_WR_MODE, &self->mode) < 0)
   {
-    self->mode = (__u8) mode;
-    if (ioctl(self->fd, SPI_IOC_WR_MODE, &self->mode) < 0)
-    {
-      SPI_DBG("error in spi_init(): can't set bus mode");
-      return SPI_ERR_SET_MODE;
-    }
+    SPI_DBG("error in spi_init(): can't set bus mode");
+    return SPI_ERR_SET_MODE;
   }
 
   // get mode
@@ -60,8 +54,8 @@ int spi_init(spi_t *self,
   // set bits per word
   if (bits)
   {
-    self->bits = (__u8) bits;
-    if (ioctl(self->fd, SPI_IOC_WR_BITS_PER_WORD, &self->bits) < 0)  
+    self->bits = (__u8)bits;
+    if (ioctl(self->fd, SPI_IOC_WR_BITS_PER_WORD, &self->bits) < 0)
     {
       SPI_DBG("error in spi_init(): can't set bits per word");
       return SPI_ERR_SET_BITS;
@@ -69,7 +63,7 @@ int spi_init(spi_t *self,
   }
 
   // get bits per word
-  if (ioctl(self->fd, SPI_IOC_RD_BITS_PER_WORD, &self->bits) < 0) 
+  if (ioctl(self->fd, SPI_IOC_RD_BITS_PER_WORD, &self->bits) < 0)
   {
     SPI_DBG("error in spi_init(): can't get bits per word");
     return SPI_ERR_GET_BITS;
@@ -78,24 +72,67 @@ int spi_init(spi_t *self,
   // set max speed [Hz]
   if (speed)
   {
-    self->speed = (__u32) speed;
-    if (ioctl(self->fd, SPI_IOC_WR_MAX_SPEED_HZ, &self->speed) < 0)  
+    self->speed = (__u32)speed;
+    if (ioctl(self->fd, SPI_IOC_WR_MAX_SPEED_HZ, &self->speed) < 0)
     {
       SPI_DBG("error in spi_init(): can't set max speed [Hz]");
       return SPI_ERR_SET_SPEED;
     }
   }
-  
+
   // get max speed [Hz]
-  if (ioctl(self->fd, SPI_IOC_RD_MAX_SPEED_HZ, &self->speed) < 0)  
+  if (ioctl(self->fd, SPI_IOC_RD_MAX_SPEED_HZ, &self->speed) < 0)
   {
     SPI_DBG("error in spi_init(): can't get max speed [Hz]");
     return SPI_ERR_SET_SPEED;
   }
 
-  SPI_DBG("open device='%s' mode=%d bits=%d lsb=%d max_speed=%d [Hz]",
-          device, (int)self->mode, (int)self->bits, (int)self->lsb,
-          (int)self->speed);
+  SPI_DBG("open device='%s' mode=%d bits=%d lsb=%d max_speed=%d [Hz]", device, (int)self->mode, (int)self->bits, (int)self->lsb, (int)self->speed);
+
+  return SPI_ERR_NONE;
+}
+
+int spi_set_mode(spi_t *self, int mode)
+{
+  // set mode
+  self->mode = (__u8)mode;
+  if (ioctl(self->fd, SPI_IOC_WR_MODE, &self->mode) < 0)
+  {
+    SPI_DBG("error in spi_init(): can't set bus mode");
+    return SPI_ERR_SET_MODE;
+  }
+
+  // get mode
+  if (ioctl(self->fd, SPI_IOC_RD_MODE, &self->mode) < 0)
+  {
+    SPI_DBG("error in spi_init(): can't get bus mode");
+    return SPI_ERR_GET_MODE;
+  }
+
+  SPI_DBG("set mode to=%d, actual=%d", mode, (int)self->mode);
+
+  return SPI_ERR_NONE;
+}
+
+int spi_set_speed(spi_t *self, int speed)
+{
+
+  // set max speed [Hz]
+  self->speed = (__u32)speed;
+  if (ioctl(self->fd, SPI_IOC_WR_MAX_SPEED_HZ, &self->speed) < 0)
+  {
+    SPI_DBG("error in spi_init(): can't set max speed [Hz]");
+    return SPI_ERR_SET_SPEED;
+  }
+
+  // get max speed [Hz]
+  if (ioctl(self->fd, SPI_IOC_RD_MAX_SPEED_HZ, &self->speed) < 0)
+  {
+    SPI_DBG("error in spi_init(): can't get max speed [Hz]");
+    return SPI_ERR_SET_SPEED;
+  }
+
+  SPI_DBG("set speed max_speed=%d [Hz], actual max_speed=%d [Hz]", speed, (int)self->speed);
 
   return SPI_ERR_NONE;
 }
@@ -107,15 +144,17 @@ void spi_free(spi_t *self)
 }
 //----------------------------------------------------------------------------
 // read data from SPIdev
-int spi_read(spi_t *self, char *rx_buf, int len)
+int spi_read(spi_t *self, void *rx_buf, int len)
 {
   int retv;
 
-  self->xfer.tx_buf = (__u64) 0;      // output buffer
-  self->xfer.rx_buf = (__u64) rx_buf; // input buffer
-  self->xfer.len    = (__u32) len;    // length of data to read
+  struct spi_ioc_transfer xfer[1] = {0};
 
-  retv = ioctl(self->fd, SPI_IOC_MESSAGE(1), &self->xfer);
+  xfer[0].tx_buf = (__u64)0;      // output buffer
+  xfer[0].rx_buf = (__u64)rx_buf; // input buffer
+  xfer[0].len = (__u32)len;       // length of data to read
+
+  retv = ioctl(self->fd, SPI_IOC_MESSAGE(1), xfer);
   if (retv < 0)
   {
     SPI_DBG("error in spi_read(): ioctl(SPI_IOC_MESSAGE(1)) return %d", retv);
@@ -126,15 +165,17 @@ int spi_read(spi_t *self, char *rx_buf, int len)
 }
 //----------------------------------------------------------------------------
 // write data to SPIdev
-int spi_write(spi_t *self, const char *tx_buf, int len)
+int spi_write(spi_t *self, const void *tx_buf, int len)
 {
   int retv;
 
-  self->xfer.tx_buf = (__u64) tx_buf; // output buffer
-  self->xfer.rx_buf = (__u64) 0;      // input buffer
-  self->xfer.len    = (__u32) len;    // length of data to write
+  struct spi_ioc_transfer xfer[1] = {0};
 
-  retv = ioctl(self->fd, SPI_IOC_MESSAGE(1), &self->xfer);
+  xfer[0].tx_buf = (__u64)tx_buf; // output buffer
+  xfer[0].rx_buf = (__u64)0;      // input buffer
+  xfer[0].len = (__u32)len;       // length of data to write
+
+  retv = ioctl(self->fd, SPI_IOC_MESSAGE(1), xfer);
   if (retv < 0)
   {
     SPI_DBG("error in spi_write(): ioctl(SPI_IOC_MESSAGE(1)) return %d", retv);
@@ -145,26 +186,77 @@ int spi_write(spi_t *self, const char *tx_buf, int len)
 }
 //----------------------------------------------------------------------------
 // read and write `len` bytes from/to SPIdev
-int spi_exchange(spi_t *self, char *rx_buf, const char *tx_buf, int len)
+int spi_exchange(spi_t *self, void *rx_buf, const void *tx_buf, int len)
 {
   int retv;
 
-  self->xfer.tx_buf = (__u64) tx_buf; // output buffer
-  self->xfer.rx_buf = (__u64) rx_buf; // input buffer
-  self->xfer.len    = (__u32) len;    // length of data to write
+  struct spi_ioc_transfer xfer[1] = {0};
 
-  retv = ioctl(self->fd, SPI_IOC_MESSAGE(1), &self->xfer);
+  xfer[0].tx_buf = (__u64)tx_buf; // output buffer
+  xfer[0].rx_buf = (__u64)rx_buf; // input buffer
+  xfer[0].len = (__u32)len;       // length of data to write
+
+  retv = ioctl(self->fd, SPI_IOC_MESSAGE(1), xfer);
   if (retv < 0)
   {
-    SPI_DBG("error in spi_exchange(): ioctl(SPI_IOC_MESSAGE(1)) return %d",
-             retv);
+    SPI_DBG("error in spi_exchange(): ioctl(SPI_IOC_MESSAGE(1)) return %d", retv);
     return SPI_ERR_EXCHANGE;
   }
 
   return retv;
 }
 //----------------------------------------------------------------------------
+// read data from SPIdev from specific register address
+int spi_read_reg8(spi_t *self, uint8_t reg_addr, void *rx_buf, int len)
+{
+  int retv;
 
-/*** end of "spi.c" file ***/
+  struct spi_ioc_transfer xfer[2] = {0};
 
+  // Write message for register address
+  xfer[0].tx_buf = (__u64)&reg_addr;     // output buffer
+  xfer[0].rx_buf = (__u64)0;             // input buffer
+  xfer[0].len = (__u32)sizeof(reg_addr); // length of data to read
 
+  // Write message for rx data
+  xfer[1].tx_buf = (__u64)0;      // output buffer
+  xfer[1].rx_buf = (__u64)rx_buf; // input buffer
+  xfer[1].len = (__u32)len;       // length of data to read
+
+  retv = ioctl(self->fd, SPI_IOC_MESSAGE(2), xfer);
+  if (retv < 0)
+  {
+    SPI_DBG("error in spi_read_reg8(): ioctl(SPI_IOC_MESSAGE(2)) return %d", retv);
+    return SPI_ERR_READ;
+  }
+
+  return retv;
+}
+//----------------------------------------------------------------------------
+// write data to SPIdev to specific register address
+int spi_write_reg8(spi_t *self, uint8_t reg_addr, const void *tx_buf, int len)
+{
+  int retv;
+
+  struct spi_ioc_transfer xfer[2] = {0};
+
+  // Write message for register address
+  xfer[0].tx_buf = (__u64)&reg_addr;     // output buffer
+  xfer[0].rx_buf = (__u64)0;             // input buffer
+  xfer[0].len = (__u32)sizeof(reg_addr); // length of data to write
+
+  // Write message for tx data
+  xfer[1].tx_buf = (__u64)tx_buf; // output buffer
+  xfer[1].rx_buf = (__u64)0;      // input buffer
+  xfer[1].len = (__u32)len;       // length of data to write
+
+  retv = ioctl(self->fd, SPI_IOC_MESSAGE(2), xfer);
+  if (retv < 0)
+  {
+    SPI_DBG("error in spi_write_reg8(): ioctl(SPI_IOC_MESSAGE(2)) return %d", retv);
+    return SPI_ERR_WRITE;
+  }
+
+  return retv;
+}
+//----------------------------------------------------------------------------
